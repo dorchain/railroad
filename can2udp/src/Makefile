@@ -10,6 +10,10 @@ BIN = $@
 
 all:	$(BINS)
 
+install: all
+	mkdir -p $(DESTDIR)/$(PREFIX)
+	cp $(BINS) $(DESTDIR)/$(PREFIX)
+
 # CFLAGS+=-Wall -Wextra -Wmaybe-uninitialized -pedantic-errors -std=gnu99 -g
 CFLAGS+=-g -O2 -fstack-protector-strong -Wformat -Werror=format-security -Wall -Wextra -Wmaybe-uninitialized -std=gnu99 -pedantic-errors -Wdate-time
 
