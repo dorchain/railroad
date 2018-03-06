@@ -18,23 +18,16 @@
 #define MAXGBS		16
 #define MAXSTRING	1024
 
-#define DEBUG		0
 #define CONFIG_STRING	0x00
 #define CONFIG_FILE	0x01
 
-#define debug_print(...) \
-            do { if (DEBUG) fprintf(stdin, ##__VA_ARGS__); } while (0)
-
-#define check_modify(a, b) \
-            do { if ( a ) b = a; } while (0)
-
-#define check_free(a) \
-            do { if ( a ) free(a); } while (0)
-
 int get_char_index(const char **list, char *str);
+int get_value(char *st, char *search);
 void delete_all_track_pages(void);
 void delete_all_track_data(void);
 void delete_all_loco_data(void);
+void delete_all_loco_names(void);
+void delete_loco_by_name(char *name);
 int add_loco(struct loco_data_t *loco);
 int add_track_data(struct track_data_t *td);
 int add_track_page(struct track_page_t *page, char *name);
@@ -45,12 +38,14 @@ void sort_td_by_id(void);
 void print_pages(void);
 void print_gbstats(void);
 void print_tracks(void);
-void print_locos(void);
+void print_locos(FILE *file);
+void print_loco_names(FILE *file);
 int read_track_data(char *config_file);
 int read_track_config(char *config_file);
 void read_track_pages(char *dir);
 int read_loco_data(char *config_file, int config_type);
+int read_loco_names(char *config_file);
 int get_loco_max(void);
-
+int get_loco_uid(char *name);
 int strip_ms2_spaces(uint8_t *data, int len);
 #endif /* _READ_CS2_CONFIG_H */

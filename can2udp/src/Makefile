@@ -1,8 +1,8 @@
 BINS := can-bounce-test can-monitor can2eth can2udp can4lnx2udp can2serial clone-cs2-config clone-cs2-trigger \
         clone-ms2-loco read-cs2-ini gb2-update ir-tester cs2ping bpi-rs485 scan2lan can2lan \
-        can2lan_m ms2wifi virtual_canbuster virtual_gfp virtual_gfp3 virtual_links88 virtual_ms2 \
+        ms2wifi virtual_canbuster virtual_gfp virtual_gfp3 virtual_links88 virtual_ms2 \
         get-cs-data get-cs-config pio-i2c-udp read_lococard s88udp-bpi s88udp-rpi s88test-bpi \
-        wake-up-links88 virtual_s88udp gpio-poll lan-schnitte xntcpd
+        wake-up-links88 virtual_s88udp gpio-poll lan-schnitte xntcpd s88can
 
 PREFIX=/usr/sbin
 
@@ -16,10 +16,6 @@ install: all
 
 # CFLAGS+=-Wall -Wextra -Wmaybe-uninitialized -pedantic-errors -std=gnu99 -g
 CFLAGS+=-g -O2 -fstack-protector-strong -Wformat -Werror=format-security -Wall -Wextra -Wmaybe-uninitialized -std=gnu99 -pedantic-errors -Wdate-time
-
-install: all
-	mkdir -p $(DESTDIR)/$(PREFIX)
-	cp $(BINS) $(DESTDIR)/$(PREFIX)
 
 size_of-test: size_of-test.o
 	$(CC) $(CFLAGS) -o size_of-test size_of-test.o -lpcap
@@ -37,7 +33,7 @@ can-bounce-test: can-bounce-test.o
 	$(CC) $(CFLAGS) -o can-bounce-test can-bounce-test.o
 
 can-monitor: can-monitor.o
-	$(CC) $(CFLAGS) -o can-monitor can-monitor.o
+	$(CC) $(CFLAGS) -o can-monitor can-monitor.o -lpcap
 
 can2eth: can2eth.o
 	$(CC) $(CFLAGS) -o can2eth can2eth.o
@@ -77,9 +73,6 @@ scan2lan: crc-ccitt.o sgio.o scan2lan.o
 
 can2lan: crc-ccitt.o gio.o can2lan.o
 	$(CC) $(CFLAGS) -o can2lan crc-ccitt.o gio.o can2lan.o -lz
-
-can2lan_m: crc-ccitt.o gio.o can2lan_m.o
-	$(CC) $(CFLAGS) -o can2lan_m crc-ccitt.o gio.o can2lan_m.o -lz
 
 ms2wifi: ms2wifi.o
 	$(CC) $(CFLAGS) -o ms2wifi ms2wifi.o
@@ -134,6 +127,9 @@ gpio-poll: gpio-poll.o
 
 xntcpd: xntcpd.o
 	$(CC) $(CFLAGS) -o xntcpd xntcpd.o
+
+s88can: s88can.o mcan.o allwinner.o
+	$(CC) $(CFLAGS) -o s88can allwinner.o mcan.o s88can.o
 
 clean:
 	$(RM) *.o $(BINS) s88udp

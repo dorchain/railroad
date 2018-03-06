@@ -1,58 +1,60 @@
 const int revisionnr = 
-13302
+13657
 ;
 const char* commithash = 
-"ba8e846ca9743d62f96490b49f73becee6d1c347";
+"b9a472bae6be96561a24ac118bd5b61f70b8cf96";
+const char* origin = "LOCAL"
+;
 const char* revlog = 
-"13302 2017-12-28 19:03:07 +0100 actionsctrldlg: revert replace setstringselection\n" \
-"13301 2017-12-28 15:42:34 +0100 loconet: dyn correction\n" \
-"13300 2017-12-28 15:40:25 +0100 z21: correction for qos\n" \
-"13299 2017-12-28 13:59:50 +0100 block, signal: trace level corrections\n" \
-"13298 2017-12-28 11:32:57 +0100 block: remove fifo flags from reset trigs\n" \
-"13297 2017-12-28 11:14:20 +0100 block: fifoDepart function added to be able to stop the follower at IN\n" \
-"13296 2017-12-28 08:43:26 +0100 http: wait for post instead of poll for it to save CPU resources\n" \
-"13295 2017-12-27 20:07:00 +0100 initialize: trace level correction\n" \
-"13294 2017-12-27 19:19:51 +0100 routedialog: crash fix\n" \
-"13293 2017-12-27 16:58:50 +0100 roclcdr: get state name function added for tracing\n" \
-"13292 2017-12-27 11:47:16 +0100 rocview makefile: -Wno-deprecated-declarations\n" \
-"13291 2017-12-27 10:37:35 +0100 loconet: railcom dyn messages support added\n" \
-"13290 2017-12-27 10:22:36 +0100 z21: railcom dyn messages support added\n" \
-"13289 2017-12-27 09:41:27 +0100 http: prevent deadlock in the rocwweb broadcast service\n" \
-"13288 2017-12-27 09:18:17 +0100 rocview: replaced setstringselection with setvalue in comboboxes to be case sensitive (wx work-around)\n" \
-"13287 2017-12-26 22:03:56 +0100 blockdialog: wx work-around for setting signal IDs\n" \
-"13286 2017-12-26 16:02:42 +0100 block: correction of the depart fifo flag\n" \
-"13285 2017-12-26 10:56:33 +0100 moved node-red to its own repository\n" \
-"13284 2017-12-26 09:45:32 +0100 blockgroup: check the conditions too on isFree at destination selection\n" \
-"13283 2017-12-26 08:16:27 +0100 switch, signal: sod flag added\n" \
-"13282 2017-12-25 12:10:05 +0100 node-red: update\n" \
-"13281 2017-12-25 08:37:47 +0100 node-red: rcp send exceptions also to the info output\n" \
-"13280 2017-12-24 17:21:32 +0100 stage: fix for evaluating the stopspeedtolastsection option\n" \
-"13279 2017-12-24 16:53:43 +0100 node-red: fix for getting the node reference\n" \
-"13278 2017-12-24 15:44:39 +0100 mqtt: fix for stack overflow\n" \
-"13277 2017-12-24 15:09:50 +0100 rnmqtt: check if the keep alive timer > 0\n" \
-"13276 2017-12-24 14:46:30 +0100 node-red: rcp node with 2 outputs for exceptions and info\n" \
-"13275 2017-12-24 14:27:07 +0100 node-red: evaluate rcp node\n" \
-"13274 2017-12-24 14:07:31 +0100 node-red: command node (wip)\n" \
-"13273 2017-12-23 16:24:21 +0100 loc: trace level correction for checking function events\n" \
-"13272 2017-12-23 15:47:59 +0100 actionsctrldlg: minimal index list height\n" \
-"13271 2017-12-23 15:37:41 +0100 keyboarddlg: capture enter from text field to exit dialog with ok\n" \
-"13270 2017-12-23 14:05:10 +0100 location: check first if a block in the location is already reserved before looking up the first free block available\n" \
-"13269 2017-12-23 11:57:18 +0100 action: clone the action control node before starting the timed therad\n" \
-"13268 2017-12-23 11:36:27 +0100 action: check for global shutdown and or quit flag\n" \
-"13267 2017-12-23 10:07:59 +0100 rocview: app exit minor change to prevent using trace and connection after disconnect\n" \
-"13266 2017-12-22 12:33:04 +0100 block: fifoin for first car too\n" \
-"13265 2017-12-22 11:17:41 +0100 route, signal: fix for atfree commands in manual mode\n" \
-"13264 2017-12-22 09:04:47 +0100 block: fifoin action state added\n" \
-"13263 2017-12-22 08:45:03 +0100 block, text, action: eventlcid variable support\n" \
-"13262 2017-12-22 08:44:02 +0100 actionsctrldlg: crash fix at add\n" \
-"13261 2017-12-21 20:05:48 +0100 blockgroupingdlg: translation correction\n" \
-"13260 2017-12-21 14:59:03 +0100 action, block: eventlcid variable added\n" \
-"13259 2017-12-21 14:12:54 +0100 roclcdr: replaced long with time_t to prevent win64 crash\n" \
-"13258 2017-12-20 17:42:13 +0100 bidib: typo\n" \
-"13257 2017-12-20 17:17:29 +0100 bidib: revert messages update ...\n" \
-"13256 2017-12-20 16:53:17 +0100 bidib: messages update (introduced c99 check)\n" \
-"13255 2017-12-20 11:21:09 +0100 rocnetnode: revision correction\n" \
-"13254 2017-12-20 10:41:45 +0100 rocnetnode: mqtt support (wip)\n" \
-"13253 2017-12-20 10:05:38 +0100 rocnetnode: mqtt support (wip)\n" \
+"13657 2018-03-06 10:04:16 +0100 app: give the clients some more time to disconnect after a shutdown\n" \
+"13656 2018-03-06 08:47:35 +0100 routedialog: use the gotodlg for selecting crossing blocks\n" \
+"13655 2018-03-06 07:52:01 +0100 rocnetnodedlg: show I2C group in decimal also\n" \
+"13654 2018-03-05 15:53:00 +0100 bidib: removed obsolete iocfg flag\n" \
+"13653 2018-03-05 15:33:57 +0100 loc, lindesection: nraxis and axle wait added\n" \
+"13652 2018-03-05 13:44:45 +0100 cardlg: nraxis added to the details\n" \
+"13651 2018-03-05 12:07:47 +0100 mcs2: reader thread set to high priority in case of serial communication\n" \
+"13650 2018-03-05 11:20:38 +0100 railwaylinedlg: layout corrections and translations\n" \
+"13649 2018-03-05 10:59:57 +0100 mcs2: cc-schnitte support minor improvement\n" \
+"13648 2018-03-05 08:29:11 +0100 rocnetnodedlg: button for linking decoder\n" \
+"13647 2018-03-04 11:48:44 +0100 bidibprogdlg: use switch commands in case of porttype servo\n" \
+"13646 2018-03-04 11:39:55 +0100 bidib: use switch command for testing a servo\n" \
+"13645 2018-03-04 11:22:53 +0100 bidib programming dialog: removed accessory\n" \
+"13644 2018-03-04 08:58:56 +0100 translation merge: de, nl, sl, pt_BR\n" \
+"13643 2018-03-04 08:31:05 +0100 stage: crossing flag at isFree to beable to run through without length\n" \
+"13642 2018-03-03 14:27:20 +0100 locationdlg: use linesections in combo\n" \
+"13641 2018-03-03 14:06:15 +0100 railwayline dialog: wip\n" \
+"13640 2018-03-03 11:40:28 +0100 stage: check section locoid also if length > 0\n" \
+"13639 2018-03-03 11:18:23 +0100 swdlg: set fake id for some command stations like dccpp\n" \
+"13638 2018-03-03 10:54:19 +0100 virtual: sod generator active at protver=1\n" \
+"13637 2018-03-03 10:49:19 +0100 model,fback: only lookup an offset variable if set to avoid waisting time\n" \
+"13636 2018-03-03 08:09:10 +0100 virtual: use a thread for reporting SoD events\n" \
+"13635 2018-03-03 07:50:43 +0100 virtual: report 1024 sensor at SoD in case version ist set to 2\n" \
+"13634 2018-03-03 07:44:55 +0100 virtual: removed 1024 sensor reports at SoD\n" \
+"13633 2018-03-02 14:30:58 +0100 ecos: trace corrections\n" \
+"13632 2018-03-02 14:26:02 +0100 ecos: ignore set oid 1000+ reply\n" \
+"13631 2018-03-02 13:37:19 +0100 ecos: recovery fix\n" \
+"13630 2018-03-02 10:32:19 +0100 stage: allow crossing if empty\n" \
+"13629 2018-03-02 08:22:07 +0100 xmlscript: fix for connect OR\n" \
+"13628 2018-03-01 15:10:05 +0100 schedulegraph: use section as selection\n" \
+"13627 2018-03-01 14:54:52 +0100 wrapper: section attribute added in schedule\n" \
+"13626 2018-03-01 14:28:46 +0100 bidibdlg: cleaned up\n" \
+"13625 2018-02-28 15:41:41 +0100 locations: use independet position units\n" \
+"13624 2018-02-28 15:05:54 +0100 rocnetnode: not removing ttyAMA0 as console: Admin job.\n" \
+"13623 2018-02-28 11:53:28 +0100 locationsdlg: changed kmpos label\n" \
+"13622 2018-02-28 11:34:36 +0100 location: added railway section and changed kmpos in hmpos\n" \
+"13621 2018-02-28 09:24:25 +0100 locationsdlg: added modify button on the index tab\n" \
+"13620 2018-02-28 08:46:18 +0100 locationdlg: show kmpos in the position column\n" \
+"13619 2018-02-27 21:40:22 +0100 rocview: added the preview flag for GTK filedialog\n" \
+"13618 2018-02-27 15:20:46 +0100 schedulegraph: use kmpos in case all locations are set\n" \
+"13617 2018-02-27 13:38:32 +0100 xmlscript: optional connect attribute for if statement for connection condition, state and class; default and.\n" \
+"13616 2018-02-27 11:50:36 +0100 bidib: update product list\n" \
+"13615 2018-02-27 08:04:51 +0100 xmlscript: revert; previous version is OK\n" \
+"13614 2018-02-27 07:56:18 +0100 xmlscript: regard the not alltrue flag in case of testing the state argument\n" \
+"13613 2018-02-26 21:58:11 +0100 bidibidentdlg: revert disable programming tabs\n" \
+"13612 2018-02-26 14:22:01 +0100 location: kmpos option added\n" \
+"13611 2018-02-26 10:46:05 +0100 wmz21: switch command broadcast to the apps\n" \
+"13610 2018-02-25 19:37:49 +0100 xmlscript. weather command support added\n" \
+"13609 2018-02-25 18:11:54 +0100 loc: set flag to signal of function with own address\n" \
+"13608 2018-02-25 12:17:15 +0100 xmlscript: replace vars in nodes recursive\n" \
 
 "log end";

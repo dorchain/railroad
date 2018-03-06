@@ -7,7 +7,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=can2udp
-PKG_RELEASE:=1.31
+PKG_RELEASE:=1.40
 
 PKG_BUILD_DIR:=$(BUILD_DIR)/$(PKG_NAME)
 PKG_BUILD_PARALLEL:=1
@@ -18,7 +18,7 @@ define Package/can2udp
   SECTION:=utils
   CATEGORY:=Utilities
   TITLE:=can2udp/can2lan gateway
-  DEPENDS:= +zlib
+  DEPENDS:= +zlib +libpcap
 endef
 
 define Package/can2udp/description
@@ -44,7 +44,6 @@ define Package/can2udp/install
 	$(INSTALL_BIN) $(PKG_BUILD_DIR)/can-monitor $(1)/usr/bin/
 	$(INSTALL_BIN) $(PKG_BUILD_DIR)/can2udp $(1)/usr/bin/
 	$(INSTALL_BIN) $(PKG_BUILD_DIR)/can2lan $(1)/usr/bin/
-	$(INSTALL_BIN) $(PKG_BUILD_DIR)/can2lan_m $(1)/usr/bin/
 	$(INSTALL_BIN) $(PKG_BUILD_DIR)/can2serial $(1)/usr/bin/
 	$(INSTALL_BIN) $(PKG_BUILD_DIR)/clone-cs2-config $(1)/usr/bin/
 	$(INSTALL_BIN) $(PKG_BUILD_DIR)/clone-cs2-trigger $(1)/usr/bin/
@@ -72,6 +71,7 @@ ifneq (,$(findstring banana,$(CONFIG_TARGET_PROFILE)))
 	$(INSTALL_DIR) $(1)/usr/bin
 	$(INSTALL_BIN) $(PKG_BUILD_DIR)/s88udp-bpi $(1)/usr/bin/s88udp
 	$(INSTALL_BIN) $(PKG_BUILD_DIR)/s88test-bpi $(1)/usr/bin/
+	$(INSTALL_BIN) $(PKG_BUILD_DIR)/s88can $(1)/usr/bin/
 endif
 ifneq (,$(findstring carambola,$(CONFIG_TARGET_PROFILE)))
 	$(INSTALL_DIR) $(1)/etc/init.d
@@ -90,6 +90,7 @@ endif
 	$(INSTALL_BIN) ./files/lan-schnitte.init $(1)/root/lan-schnitte
 	$(INSTALL_BIN) ./files/ir.sh $(1)/root/
 	$(INSTALL_BIN) ./files/card-reader.sh $(1)/root/card-reader.sh
+	$(INSTALL_BIN) ./files/clone-ms2-loco.init $(1)/root/clone-ms2-loco
 	$(INSTALL_BIN) ./files/pio-i2c-udp.init $(1)/root/pio-i2c-udp
 	$(INSTALL_BIN) ./files/wake-up-links88.init $(1)/root/wake-up-links88
 	$(INSTALL_BIN) ./files/scripts/get-icons.sh $(1)/root/get-icons.sh
@@ -106,16 +107,6 @@ define Package/can2udp/postinst
         ln -sf /usr/bin/gb2-update $${IPKG_INSTROOT}/usr/bin/ms2-update
         ln -sf /www/config $${IPKG_INSTROOT}/www/betatest/cs2
         ln -sf /www/config $${IPKG_INSTROOT}/betatest/cs2
-endef
-
-define Package/can2udp/postinst
-#!/bin/sh
-# check if we are on real system
-if [ -z "$${IPKG_INSTROOT}" ]; then
-        echo "Removing rc.d symlink for s88udp"
-        /etc/init.d/s88udp disable
-fi
-exit 0
 endef
 
 $(eval $(call BuildPackage,can2udp))

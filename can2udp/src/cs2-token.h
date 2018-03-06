@@ -7,18 +7,21 @@
  * ----------------------------------------------------------------------------
  */
 
-#ifndef _CS2_TOKEN_H
-#define _CS2_TOKEN_H
+#ifndef _CS2_TOKEN_H_
+#define _CS2_TOKEN_H_
 
 enum {
-    L00_TRACK_PAGE = 0,
+    L00_DEVICES = 0,
+    L00_TRACK_PAGE,
     L00_TRACK,
     L00_LOCO_SHORT,
     L00_LOCO,
     L00_LOCO_NUMBER,
     L00_MAGS,
     L00_ATRACK,
+    L0_DEVICE,
     L0_LOCO,
+    L0_LOC,
     L0_ATRACK,
     L0_VERSION,
     L0_SESSION,
@@ -30,6 +33,7 @@ enum {
 };
 
 const char *l0_token [] = {
+    "[geraete]",
     "[gleisbildseite]",
     "[gleisbild]",
     "[lok]",
@@ -37,7 +41,9 @@ const char *l0_token [] = {
     "[numloks]",
     "[magnetartikel]",
     "[fahrstrassen]",
+    "device",
     "lokomotive",
+    "lok",
     "fahrstrasse",
     "version",
     "session",
@@ -51,12 +57,19 @@ const char *l0_token [] = {
 
 enum {
     L1_FUNCTION = 0,
+    L1_FUNCTION2,
+    L1_FCT,
+    L1_MFXADR,
     L1_MAJOR,
     L1_MINOR,
     L1_ID,
     L1_UID,
+    L1_NICKNAME,
+    L1_RECOGNITION,
     L1_DIRECTION,
+    L1_CHANNEL,
     L1_VALUE,
+    L1_NR,
     L1_VELOCITY,
     L1_ADDRESS,
     L1_SID,
@@ -85,17 +98,25 @@ enum {
     L1_HEIGHT,
     L1_TEXT,
     L1_STATE,
-    L1_DEVICEID
+    L1_DEVICEID,
+    L1_INTRACTION
 };
 
 const char *l1_token [] = {
     " .funktionen",
+    " .funktionen_2",
+    " .fkt",
+    " .mfxAdr",
     " .major=",
     " .minor=",
     " .id=",
     " .uid=",
+    " .nickname=",
+    " .kennung=",
     " .richtung=",
+    " .kanal=",
     " .wert=",
+    " .nr=",
     " .velocity=",
     " .adresse=",
     " .sid=",
@@ -125,6 +146,7 @@ const char *l1_token [] = {
     " .text=",
     " .zustand=",
     " .deviceId=",
+    " .inTraktion=",
     "\0"
 };
 
@@ -133,8 +155,12 @@ const char *l1_token [] = {
 #define L1_MINOR_LENGTH		8
 #define L1_ID_LENGTH		5
 #define L1_UID_LENGTH		6
+#define L1_NICKNAME_LENGTH	11
+#define L1_RECOGNITION_LENGTH	10
 #define L1_DIRECTION_LENGTH	11
+#define L1_CHANNEL_LENGTH	8
 #define L1_VALUE_LENGTH		7
+#define L1_NR_LENGTH		5
 #define L1_VELOCITY_LENGTH	11
 #define L1_ADDRESS_LENGTH	10
 #define L1_SID_LENGTH		6
@@ -164,6 +190,7 @@ const char *l1_token [] = {
 #define L1_TEXT_LENGTH		7
 #define L1_STATE_LENGTH		10
 #define L1_DEVICEID_LENGTH	11
+#define L1_INTRACTION_LENGTH	13
 
 const char *track_types[] = {
     "leer",
@@ -299,7 +326,7 @@ lok
 ..typ=32
 .mfxAdr
 ..target=2
-..name=3
+..name3
 ..addr=136
 ..xcel=78
 ..speedtable=79
@@ -321,7 +348,9 @@ enum {
     L2_SPEEDTABLE,
     L2_VOLUME,
     L2_NUMFUNCTION,
-    L2_FUNKTION
+    L2_FUNCTION,
+    L2_FORWARD,
+    L2_BACKWARD
 };
     
 const char *l2_token [] = {
@@ -330,13 +359,15 @@ const char *l2_token [] = {
     " ..dauer=",
     " ..wert=",
     " ..target=",
-    " ..name=",
+    " ..name",
     " ..addr=",
     " ..xcel=",
     " ..speedtable=",
     " ..volume=",
-    " ..numfunct=",
+    " ..numfunc=",
     " ..func=",
+    " ..vorwaerts=",
+    " ..rueckwaerts=",
     "\0"
 };
 
@@ -346,11 +377,14 @@ const char *l2_token [] = {
 #define L2_TYPE_LENGTH		7
 #define L2_VALUE_LENGTH		8
 #define L2_TARGET_LENGTH	10
-#define L2_NAME_LENGTH		8
+#define L2_NAME_LENGTH		7
 #define L2_ADDRESS_LENGTH	8
+#define L2_XCEL_LENGTH		8
 #define L2_SPEEDTABLE_LENGTH	14
 #define L2_VOLUME_LENGTH	10
-#define L2_NUMFUNCTION_LENGTH	10
+#define L2_NUMFUNCTION_LENGTH	11
 #define L2_FUNCTION_LENGTH	8
+#define L2_FOWARD_LENGTH	13
+#define L2_BACKWARD_LENGTH	15
 
 #endif /* _CS2_TOKEN_H_ */

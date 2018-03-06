@@ -35,7 +35,7 @@
 #define DEBUG		0
 
 #define debug_print(...) \
-            do { if (DEBUG) fprintf(stdin, ##__VA_ARGS__); } while (0)
+            do { if (DEBUG) fprintf(stdout, ##__VA_ARGS__); } while (0)
 
 #define check_modify(a, b) \
 	    do { if ( a ) b = a; } while (0)
@@ -45,14 +45,15 @@
 
 char *track_dir   = { "/gleisbilder" };
 char *track_name  = { "gleisbild.cs2" };
-char *loco_name  = { "lokomotive.cs2" };
-char *mags_name  = { "magnetartikel.cs2" };
-char *auto_name  = { "fahrstrassen.cs2" };
+char *loco_name   = { "lokomotive.cs2" };
+char *mags_name   = { "magnetartikel.cs2" };
+char *auto_name   = { "fahrstrassen.cs2" };
 char *gbs_default = { "gbs-0" };
 
 struct track_page_t *track_page = NULL;
 struct track_data_t *track_data = NULL;
 struct loco_data_t *loco_data = NULL;
+struct loco_names_t *loco_names = NULL;
 
 char *fgets_buffer(char *dest, int max, char *src) {
 
@@ -89,6 +90,22 @@ int strip_ms2_spaces(uint8_t *st, int len) {
 	st[index++] = st[i];
     }
     st[index] = 0;
+    return 0;
+}
+
+int get_value(char *st, char *search) {
+    char line[MAXSIZE];
+    char *sret;
+    char *config = st;
+
+    sret = fgets_buffer(line, MAXSIZE, config);
+    while (sret != NULL) {
+	line[strcspn(line, "\r\n")] = 0;
+	if (strncmp(search, line, strlen(search)) == 0)
+	    return strtoul(&line[strlen(search)], NULL, 10);
+	sret = fgets_buffer(line, MAXSIZE, config);
+	config = sret;
+    }
     return 0;
 }
 
@@ -137,13 +154,56 @@ void delete_all_loco_data(void) {
     }
 }
 
+void delete_loco_by_name(char *name) {
+    struct loco_data_t *l;
+    HASH_FIND_STR(loco_data, name, l);
+    if (l)
+	HASH_DEL(loco_data, l);
+}
+
+void delete_all_loco_names(void) {
+    struct loco_names_t *nloco, *tmp;
+
+    HASH_ITER(hh, loco_names, nloco, tmp) {
+	HASH_DEL(loco_names, nloco);
+	check_free(nloco->name);
+	free(nloco);
+    }
+}
+
+int add_loco_name(struct loco_names_t *loco) {
+    struct loco_names_t *l;
+
+    HASH_FIND_STR(loco_names, loco->name, l);
+
+    if (l == NULL) {
+	l = (struct loco_names_t *)calloc(1, sizeof(struct loco_names_t));
+	if (!l) {
+	    fprintf(stderr, "%s: can't calloc loco names: %s\n", __func__, strerror(errno));
+	    return (EXIT_FAILURE);
+	}
+	l->name = calloc(strlen(loco->name) + 1, 1);
+	if (!l->name) {
+	    fprintf(stderr, "%s: can't calloc loco name: %s\n", __func__, strerror(errno));
+	    free(l);
+	    return (EXIT_FAILURE);
+	}
+	strcpy(l->name, loco->name);
+	l->number = loco->number;
+	l->max_value = loco->max_value;
+	HASH_ADD_STR(loco_names, name, l);
+    }
+    return (EXIT_SUCCESS);
+}
+
 int add_loco(struct loco_data_t *loco) {
     struct loco_data_t *l;
 
     HASH_FIND_STR(loco_data, loco->name, l);
+
     if (l == NULL) {
 	/* if ((!loco->name) || (!loco->type))
-	    return (EXIT_FAILURE); */
+	   return (EXIT_FAILURE); */
 	if (!loco->name)
 	    return (EXIT_FAILURE);
 
@@ -160,6 +220,22 @@ int add_loco(struct loco_data_t *loco) {
 	}
 	strcpy(l->name, loco->name);
 
+	if (loco->icon) {
+	    l->icon = calloc(strlen(loco->icon) + 1, 1);
+	    if (!l->icon) {
+		fprintf(stderr, "%s: can't calloc loco icon string: %s\n", __func__, strerror(errno));
+		free(l);
+		return (EXIT_FAILURE);
+	    }
+	    strcpy(l->icon, loco->icon);
+	}
+
+	l->mfxAdr = calloc(1, sizeof(struct mfxAdr_t));
+	if (!l->mfxAdr) {
+	    fprintf(stderr, "can't calloc buffer for loco mfx data: %s\n", strerror(errno));
+	    return (EXIT_FAILURE);
+	}
+
 	if (loco->type) {
 	    l->type = calloc(strlen(loco->type) + 1, 1);
 	    if (!l->type) {
@@ -170,12 +246,16 @@ int add_loco(struct loco_data_t *loco) {
 	    strcpy(l->type, loco->type);
 	}
 
+	l->minor = loco->minor;
+	l->major = loco->major;
+	l->id = loco->id;
 	l->uid = loco->uid;
 	l->direction = loco->direction;
 	l->number = loco->number;
 	l->velocity = loco->velocity;
 	l->address = loco->address;
 	l->sid = loco->sid;
+	l->symbol = loco->symbol;
 	l->long_uid = loco->long_uid;
 	l->address = loco->address;
 	l->mfxuid = loco->mfxuid;
@@ -183,16 +263,24 @@ int add_loco(struct loco_data_t *loco) {
 	l->slow_down_delay = loco->slow_down_delay;
 	l->volume = loco->volume;
 	l->progmask = loco->progmask;
+	l->tmax = loco->tmax;
 	l->vmax = loco->vmax;
 	l->vmin = loco->vmin;
+	l->xprot = loco->xprot;
+	l->spm = loco->spm;
+	l->ft = loco->ft;
 	l->mfxtype = loco->mfxtype;
+	l->intraction = loco->intraction;
 	HASH_ADD_STR(loco_data, name, l);
-	/* TODO: mfx & function struct */
     } else {
+	check_modify(loco->minor, l->minor);
+	check_modify(loco->major, l->major);
+	check_modify(loco->id, l->id);
 	check_modify(loco->direction, l->direction);
 	check_modify(loco->velocity, l->velocity);
 	check_modify(loco->address, l->address);
 	check_modify(loco->sid, l->sid);
+	check_modify(loco->symbol, l->symbol);
 	check_modify(loco->long_uid, l->long_uid);
 	check_modify(loco->address, l->address);
 	check_modify(loco->mfxuid, l->mfxuid);
@@ -200,11 +288,19 @@ int add_loco(struct loco_data_t *loco) {
 	check_modify(loco->slow_down_delay, l->slow_down_delay);
 	check_modify(loco->volume, l->volume);
 	check_modify(loco->progmask, l->progmask);
+	check_modify(loco->tmax, l->tmax);
 	check_modify(loco->vmax, l->vmax);
 	check_modify(loco->vmin, l->vmin);
+	check_modify(loco->spm, l->spm);
+	check_modify(loco->xprot, l->xprot);
+	check_modify(loco->ft, l->ft);
 	check_modify(loco->mfxtype, l->mfxtype);
-	/* TODO: mfx & function struct */
+	check_modify(loco->intraction, l->intraction);
     }
+    memcpy(l->function, loco->function, sizeof(l->function));
+
+    memcpy(l->mfxAdr, loco->mfxAdr, sizeof(struct mfxAdr_t));
+
     return (EXIT_SUCCESS);
 }
 
@@ -216,7 +312,17 @@ int get_loco_max(void) {
 	if (l->number > loco_max)
 	    loco_max = l->number;
     }
-    return(loco_max);
+    return (loco_max);
+}
+
+int get_loco_uid(char *name) {
+    struct loco_data_t *l;
+    int loco_uid = 0;
+
+    HASH_FIND_STR(loco_data, name, l);
+    if (l)
+	loco_uid = l->uid;
+    return (loco_uid);
 }
 
 int add_track_data(struct track_data_t *td) {
@@ -354,12 +460,66 @@ void print_tracks(void) {
     }
 }
 
-void print_locos(void) {
+void print_locos(FILE *file) {
+    int i;
     struct loco_data_t *l;
 
+    l = loco_data;
+    fprintf(file, "[lokomotive]\n");
+    fprintf(file, "version\n");
+    if (l->major) fprintf(file, " .major=%d\n", l->major);
+    fprintf(file, " .minor=%d\n", l->minor);
+    fprintf(file, "session\n");
+    fprintf(file, " .id=%d\n", l->id);
+
     for (l = loco_data; l != NULL; l = l->hh.next) {
-	printf("[loco]\n");
-	printf(" .name=%s\n", l->name);
+	fprintf(file, "lokomotive\n");
+	fprintf(file, " .name=%s\n", l->name);
+	if (l->direction) fprintf(file, " .richtung=%d\n", l->direction);
+	fprintf(file, " .uid=0x%x\n", l->uid);
+	fprintf(file, " .adresse=0x%x\n", l->address);
+	fprintf(file, " .typ=%s\n", l->type);
+	if (l->sid)	fprintf(file, " .sid=0x%x\n", l->sid);
+	if (l->mfxuid)	fprintf(file, " .mfxuid=0x%x\n", l->mfxuid);
+	if (l->icon)	fprintf(file, " .icon=%s\n", l->icon);
+	if (l->symbol)	fprintf(file, " .symbol=%d\n", l->symbol);
+	if (l->acc_delay) fprintf(file, " .av=%d\n", l->acc_delay);
+	if (l->slow_down_delay) fprintf(file, " .bv=%d\n", l->slow_down_delay);
+	if (l->volume)	fprintf(file, " .volume=%d\n", l->volume);
+	if (l->progmask) fprintf(file, " .progmask=0x%x\n", l->progmask);
+	fprintf(file, " .tachomax=%d\n", l->tmax);
+	if (l->vmax)	fprintf(file, " .vmax=%d\n", l->vmax);
+	if (l->vmin)	fprintf(file, " .vmin=%d\n", l->vmin);
+	if (l->xprot)	fprintf(file, " .xprot=%d\n", l->xprot);
+	if (l->spm)	fprintf(file, " .spm=%d\n", l->spm);
+	if (l->ft)	fprintf(file, " .ft=0x%x\n", l->ft);
+	if (l->mfxtype)	fprintf(file, " .mfxtyp=%d\n", l->mfxtype);
+	for (i = 0; i < MAX_LOCO_FUNCTIONS; i++) {
+	    if (i < 16) {
+		fprintf(file, " .funktionen\n");
+	    } else {
+		if (!l->function[i].type)
+		    continue;
+		fprintf(file, " .funktionen_2\n");
+	    }
+	    fprintf(file, " ..nr=%d\n", i);
+	    if (l->function[i].type)	fprintf(file, " ..typ=%d\n", l->function[i].type);
+	    if (l->function[i].value)	fprintf(file, " ..wert=%d\n", l->function[i].value);
+	    if (l->function[i].duration) fprintf(file, " ..dauer=%d\n", l->function[i].duration);
+	    if (l->function[i].forward)	fprintf(file, " ..vorwaerts=0x%x\n", l->function[i].forward);
+	    if (l->function[i].backward) fprintf(file, " ..rueckwaerts=0x%x\n", l->function[i].backward);
+	}
+	if (l->intraction) fprintf(file, " .inTraktion=0x%08x\n", l->intraction);
+    }
+}
+
+void print_loco_names(FILE *file) {
+    struct loco_names_t *l;
+
+    for (l = loco_names; l != NULL; l = l->hh.next) {
+	fprintf(file, "[lok]\n");
+	fprintf(file, " .name=%s\n", l->name);
+	if (l->number) fprintf(file, " .nr=%d\n", l->number);
     }
 }
 
@@ -574,12 +734,13 @@ int read_loco_data(char *config_file, int config_type) {
     int l0_token_n, l1_token_n, l2_token_n, loco_complete;
     FILE *fp = NULL;
     char line[MAXSIZE];
-    char *name = NULL, *type =NULL, *icon = NULL, *sret = NULL;
-    int16_t function, temp;
+    char *name = NULL, *type = NULL, *icon = NULL, *sret = NULL;
+    int16_t function, temp, mfx_data;
     struct loco_data_t *loco;
     struct mfxAdr_t *mfx;
 
     function = -1;
+    mfx_data = -1;
     temp = -1;
 
     /* trigger for new entry */
@@ -612,12 +773,11 @@ int read_loco_data(char *config_file, int config_type) {
     loco->type = NULL;
     loco->icon = NULL;
 
-
     if (config_type & CONFIG_FILE) {
 	sret = fgets(line, MAXSIZE, fp);
     } else {
 	sret = fgets_buffer(line, MAXSIZE, config_file);
-        config_file = sret;
+	config_file = sret;
     }
 
     while (sret != NULL) {
@@ -631,6 +791,7 @@ int read_loco_data(char *config_file, int config_type) {
 	    case L0_SESSION:
 		break;
 	    case L00_LOCO_SHORT:
+	    case L0_LOC:
 	    case L0_LOCO:
 		/* TODO: next loco */
 		if (loco_complete) {
@@ -653,7 +814,16 @@ int read_loco_data(char *config_file, int config_type) {
 	} else if (line[2] != '.') {
 	    l1_token_n = get_char_index(l1_token, line);
 	    switch (l1_token_n) {
+	    case L1_FCT:
+		mfx_data = -1;
+		function++;
+		break;
 	    case L1_FUNCTION:
+	    case L1_FUNCTION2:
+		mfx_data = -1;
+		break;
+	    case L1_MFXADR:
+		mfx_data = 0;
 		break;
 	    case L1_ID:
 		loco->id = strtoul(&line[L1_ID_LENGTH], NULL, 10);
@@ -686,6 +856,7 @@ int read_loco_data(char *config_file, int config_type) {
 	    case L1_NAME:
 		if (asprintf(&name, "%s", &line[L1_NAME_LENGTH]) < 0)
 		    fprintf(stderr, "can't alloc memory for loco->name: %s\n", __func__);
+		function = -1;
 		loco->name = name;
 		debug_print("match name:      >%s<\n", loco->name);
 		break;
@@ -694,6 +865,12 @@ int read_loco_data(char *config_file, int config_type) {
 		    fprintf(stderr, "can't alloc memory for loco->type: %s\n", __func__);
 		loco->type = type;
 		debug_print("match type:      >%s<\n", loco->type);
+		break;
+	    case L1_ICON:
+		if (asprintf(&icon, "%s", &line[L1_ICON_LENGTH]) < 0)
+		    fprintf(stderr, "can't alloc memory for loco->icon: %s\n", __func__);
+		loco->icon = icon;
+		debug_print("match icon:      >%s<\n", loco->icon);
 		break;
 	    case L1_SID:
 		loco->sid = strtoul(&line[L1_SID_LENGTH], NULL, 16);
@@ -705,13 +882,7 @@ int read_loco_data(char *config_file, int config_type) {
 		break;
 	    case L1_SYMBOL:
 		loco->symbol = strtoul(&line[L1_SYMBOL_LENGTH], NULL, 10);
-		debug_print("match symbol:    >0%d<\n", loco->symbol);
-		break;
-	    case L1_ICON:
-		if (asprintf(&icon, "%s", &line[L1_ICON_LENGTH]) < 0)
-		    fprintf(stderr, "can't alloc memory for loco->icon: %s\n", __func__);
-		loco->icon = icon;
-		debug_print("match icon:      >%s<\n", loco->icon);
+		debug_print("match symbol:    >%d<\n", loco->symbol);
 		break;
 	    case L1_AV:
 		loco->acc_delay = strtoul(&line[L1_AV_LENGTH], NULL, 10);
@@ -761,6 +932,10 @@ int read_loco_data(char *config_file, int config_type) {
 		loco->address = strtoul(&line[L1_ADDRESS_LENGTH], NULL, 16);
 		debug_print("match address:   >0x%x<\n", loco->address);
 		break;
+	    case L1_INTRACTION:
+		loco->intraction = strtoul(&line[L1_INTRACTION_LENGTH], NULL, 16);
+		debug_print("match intraction:  >0x%08x<\n", loco->intraction);
+		break;
 	    default:
 		printf(">>%s<<\n", line);
 		break;
@@ -768,9 +943,13 @@ int read_loco_data(char *config_file, int config_type) {
 	    /* Level 2 */
 	} else {
 	    l2_token_n = get_char_index(l2_token, line);
+	    if (mfx_data >= 0)
+		debug_print(" mfx data");
 	    switch (l2_token_n) {
+	    /* TODO function value check */
+	    /* function token */
 	    case L2_NUMBER:
-		function = strtoul(&line[L2_NUMBER_LENGTH], NULL, 10) & 0x0f;
+		function = strtoul(&line[L2_NUMBER_LENGTH], NULL, 10) & 0x1f;
 		break;
 	    case L2_TYPE:
 		if (function >= 0) {
@@ -791,6 +970,69 @@ int read_loco_data(char *config_file, int config_type) {
 		    temp = strtoul(&line[L2_VALUE_LENGTH], NULL, 10);
 		    loco->function[function].value = temp;
 		    debug_print(" loco function %2d value %d\n", function, temp);
+		}
+		break;
+	    case L2_FORWARD:
+		if (function >= 0) {
+		    temp = strtoul(&line[L2_FOWARD_LENGTH], NULL, 10);
+		    loco->function[function].forward = temp;
+		    debug_print(" loco function %2d forward 0x%0x\n", function, temp);
+		}
+		break;
+	    case L2_BACKWARD:
+		if (function >= 0) {
+		    temp = strtoul(&line[L2_BACKWARD_LENGTH], NULL, 10);
+		    loco->function[function].backward = temp;
+		    debug_print(" loco function %2d backward 0x%0x\n", function, temp);
+		}
+		break;
+	    /* mfxAdr token */
+	    case L2_TARGET:
+		if (mfx_data >= 0) {
+		    loco->mfxAdr->target = strtoul(&line[L2_TARGET_LENGTH], NULL, 10);
+		    debug_print(" mfxAdr target %d\n", loco->mfxAdr->target);
+		}
+		break;
+	    case L2_NAME:
+		if (mfx_data >= 0) {
+		    loco->mfxAdr->name = strtoul(&line[L2_NAME_LENGTH], NULL, 10);
+		    debug_print(" mfxAdr name %d\n", loco->mfxAdr->name);
+		}
+		break;
+	    case L2_ADDRESS:
+		if (mfx_data >= 0) {
+		    loco->mfxAdr->address = strtoul(&line[L2_ADDRESS_LENGTH], NULL, 10);
+		    debug_print(" mfxAdr addr %d\n", loco->mfxAdr->address);
+		}
+		break;
+	    case L2_XCEL:
+		if (mfx_data >= 0) {
+		    loco->mfxAdr->xcel = strtoul(&line[L2_XCEL_LENGTH], NULL, 10);
+		    debug_print(" mfxAdr xcel %d\n", loco->mfxAdr->xcel);
+		}
+		break;
+	    case L2_SPEEDTABLE:
+		if (mfx_data >= 0) {
+		    loco->mfxAdr->speedtable = strtoul(&line[L2_SPEEDTABLE_LENGTH], NULL, 10);
+		    debug_print(" mfxAdr speedtable %d\n", loco->mfxAdr->speedtable);
+		}
+		break;
+	    case L2_VOLUME:
+		if (mfx_data >= 0) {
+		    loco->mfxAdr->volume = strtoul(&line[L2_VOLUME_LENGTH], NULL, 10);
+		    debug_print(" mfxAdr voulume %d\n", loco->mfxAdr->volume);
+		}
+		break;
+	    case L2_NUMFUNCTION:
+		if (mfx_data >= 0) {
+		    loco->mfxAdr->numfunction = strtoul(&line[L2_NUMFUNCTION_LENGTH], NULL, 10);
+		    debug_print(" mfxAdr numfunction %d\n", loco->mfxAdr->numfunction);
+		}
+		break;
+	    case L2_FUNCTION:
+		if (mfx_data >= 0) {
+		    loco->mfxAdr->function = strtoul(&line[L2_FUNCTION_LENGTH], NULL, 10);
+		    debug_print(" mfxAdr func %d\n", loco->mfxAdr->function);
 		}
 		break;
 	    default:
@@ -819,5 +1061,59 @@ int read_loco_data(char *config_file, int config_type) {
 	fclose(fp);
 
     printf("loco data count: %u\n", HASH_COUNT(loco_data));
+    return (EXIT_SUCCESS);
+}
+
+int read_loco_names(char *config_file) {
+    int l0_token_n, l1_token_n;
+    char line[MAXSIZE];
+    struct loco_names_t *loco;
+    char *name = NULL, *sret = NULL, *config = config_file;
+
+    loco = calloc(1, sizeof(struct loco_names_t));
+    if (!loco) {
+	fprintf(stderr, "%s: can't calloc loco names: %s\n", __func__, strerror(errno));
+	return (EXIT_FAILURE);
+    }
+
+    sret = fgets_buffer(line, MAXSIZE, config);
+    while (sret != NULL) {
+	line[strcspn(line, "\r\n")] = 0;
+	if (line[0] != ' ') {
+	    l0_token_n = get_char_index(l0_token, line);
+	    switch (l0_token_n) {
+	    default:
+		break;
+	    }
+	} else if (line[2] != '.') {
+	    l1_token_n = get_char_index(l1_token, line);
+	    switch (l1_token_n) {
+	    case L1_NAME:
+		if (asprintf(&name, "%s", &line[L1_NAME_LENGTH]) < 0)
+		    fprintf(stderr, "can't alloc memory for loco->name: %s\n", __func__);
+		loco->name = name;
+		debug_print("match name:      >%s<\n", loco->name);
+		if (loco->name)
+		    add_loco_name(loco);
+		break;
+	    case L1_NR:
+		loco->number = strtoul(&line[L1_NR_LENGTH], NULL, 10);
+		debug_print("match nr:  >%d<\n", loco->number);
+		break;
+	    case L1_VALUE:
+		loco->max_value = strtoul(&line[L1_VALUE_LENGTH], NULL, 10);
+		debug_print("match value:  >%d<\n", loco->max_value);
+		if (loco->name)
+		    add_loco_name(loco);
+		break;
+	    default:
+		break;
+	    }
+	}
+	sret = fgets_buffer(line, MAXSIZE, config);
+	config = sret;
+    }
+    if (name)
+	free(name);
     return (EXIT_SUCCESS);
 }

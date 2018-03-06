@@ -11,6 +11,7 @@
  *  bush button PI10	266
  */
 
+#define _GNU_SOURCE
 #include <ctype.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -35,29 +36,42 @@
 #include <netinet/in.h>
 #include <linux/can.h>
 
+#include <syslog.h>
+
 #include "cs2-config.h"
 #include "read-cs2-config.h"
 
 extern struct loco_data_t *loco_data;
+extern struct loco_names_t *loco_names;
+int do_loop;
 
+#define OUR_HASH	0x4712
 #define BIT(x)		(1<<x)
 #define MINDELAY	1000000	/* min delay in usec */
 #define MAXLEN		64	/* maximum string length */
 #define MAX_BUFFER	8
 #define MAX_SYSFS_LEN	256
 #define DEF_INTERVAL	300
+#define MAXLINE		256
 #define MAX(a,b)	((a) > (b) ? (a) : (b))
+#define fprint_syslog(pipe, spipe, text) \
+	   do { fprintf( pipe, "%s: " text "\n", __func__); \
+		syslog( spipe, "%s: " text "\n", __func__); } while (0)
+
+char loco_dir[MAXLINE];
 
 uint16_t CRCCCITT(uint8_t * data, size_t length, uint16_t seed);
 
 unsigned int led_period;
 pthread_mutex_t lock;
 
-static unsigned char GET_MS2_LOCO_NAMES[]    = { 0x6c, 0x6f, 0x6b, 0x6e, 0x61, 0x6d, 0x65, 0x6e };	/* loknamen */
-static unsigned char GET_MS2_CONFIG_LOCO_I[] = { 0x6c, 0x6f, 0x6b, 0x69, 0x6e, 0x66, 0x6f, 0x00 };	/* lokinfo  */
+static unsigned char GET_MS2_LOCO_NAMES[]  = { 0x6c, 0x6f, 0x6b, 0x6e, 0x61, 0x6d, 0x65, 0x6e };	/* loknamen */
+static unsigned char GET_MS2_CONFIG_LOCO[] = { 0x6c, 0x6f, 0x6b, 0x69, 0x6e, 0x66, 0x6f, 0x00 };	/* lokinfo  */
 
-static char *T_CAN_FORMAT_STRG = "   -> CAN     0x%08X   [%d]";
-static char *F_CAN_FORMAT_STRG = "      CAN ->  0x%08X   [%d]";
+static char *T_CAN_FORMAT_STRG	= "   -> CAN     0x%08X   [%d]";
+static char *F_CAN_FORMAT_STRG	= "      CAN ->  0x%08X   [%d]";
+
+static char *LOCOLIST = "Lokliste";
 
 enum gpio_edges {
     EDGE_NONE,
@@ -66,8 +80,14 @@ enum gpio_edges {
     EDGE_BOTH
 };
 
+enum fsm_get_data {
+    FSM_START,
+    FSM_GET_LOCO_NAMES,
+    FSM_GET_LOCOS_BY_NAME
+};
+
 #define LED_PATTERN_MAX	4
-uint32_t LED_HB_SLOW[]	= { 100, 100, 100, 600 };
+uint32_t LED_HB_SLOW[]	= { 100, 200, 100, 800 };
 uint32_t LED_HB_FAST[]	= {  70,  70,  70, 220 };
 uint32_t LED_ERROR[]	= { 600, 400, 600, 400 };
 
@@ -87,21 +107,38 @@ struct trigger_t {
     int led_pattern;
     int pb_pin;
     int pb_fd;
+    int fsm_state;
+    int loco_number;
+    int loco_counter;
+    int loco_uid;
     uint16_t hash;
     uint16_t hw_id;
     uint16_t length;
     uint16_t crc;
     int data_index;
     uint8_t *data;
+    char *loco_file;
+    struct loco_names_t *loco_names;
 };
 
+uint16_t be16(uint8_t *u) {
+    return (u[0] << 8) | u[1];
+}
+
+void signal_handler(int sig) {
+    syslog(LOG_WARNING, "got signal %s\n", strsignal(sig));
+    do_loop = 0;
+}
+
 void usage(char *prg) {
-    fprintf(stderr, "\nUsage: %s -vf [-i <can int>][-t <sec>] \n", prg);
-    fprintf(stderr, "   Version 1.0\n\n");
-    fprintf(stderr, "         -i <can interface>   using can interface\n");
-    fprintf(stderr, "         -t <interval in sec> using timer in sec / 0 -> only once - default %d\n", DEF_INTERVAL);
-    fprintf(stderr, "         -l <led pin>         LED pin (e.g. BPi PI14 -> 270)\n");
+    fprintf(stderr, "\nUsage: %s -kfv [-i <CAN int>][-t <sec>][-l <LED pin>][-p <push button pin>]\n", prg);
+    fprintf(stderr, "   Version 1.2\n\n");
+    fprintf(stderr, "         -c <loco_dir>        set the locomotive file dir - default %s\n", loco_dir);
+    fprintf(stderr, "         -i <CAN interface>   using can interface\n");
+    fprintf(stderr, "         -t <interval in sec> using timer in sec\n");
+    fprintf(stderr, "         -l <LED pin>         LED pin (e.g. BPi PI14 -> 270)\n");
     fprintf(stderr, "         -p <push button>     push button (e.g. BPi PI10 -> 266)\n");
+    fprintf(stderr, "         -k                   use loco 'Lokliste' F0 as trigger\n");
     fprintf(stderr, "         -f                   run in foreground (for debugging)\n");
     fprintf(stderr, "         -v                   be verbose\n\n");
 }
@@ -168,7 +205,7 @@ int get_ms2_loco_names(struct trigger_t *trigger, uint8_t start, int8_t end) {
     if ((start > 99) || (end > 99))
 	return (EXIT_FAILURE);
     /* get Config Data */
-    frame.can_id = 0x00400300;
+    frame.can_id = 0x00400300 | trigger->hash;
 
     /* first frame */
     frame.can_dlc = 8;
@@ -188,7 +225,7 @@ int get_ms2_loco_names(struct trigger_t *trigger, uint8_t start, int8_t end) {
 int get_ms2_dbsize(struct trigger_t *trigger) {
     int ret;
 
-    ret = get_ms2_loco_names(trigger, 0, 2);
+    ret = get_ms2_loco_names(trigger, 0, 0);
     return ret;
 }
 
@@ -198,10 +235,10 @@ int get_ms2_locoinfo(struct trigger_t *trigger, char *loco_name) {
     memset(&frame, 0, sizeof(frame));
 
     /* get Config Data */
-    frame.can_id = 0x00400300;
+    frame.can_id = 0x00400300 | trigger->hash;
 
     frame.can_dlc = 8;
-    memcpy(frame.data, GET_MS2_CONFIG_LOCO_I, sizeof(frame.data));
+    memcpy(frame.data, GET_MS2_CONFIG_LOCO, sizeof(frame.data));
     if (send_can_frame(trigger->socket, &frame, trigger->verbose) < 0)
 	return (EXIT_FAILURE);
 
@@ -216,6 +253,23 @@ int get_ms2_locoinfo(struct trigger_t *trigger, char *loco_name) {
     if (send_can_frame(trigger->socket, &frame, trigger->verbose) < 0)
 	return (EXIT_FAILURE);
     return 0;
+}
+
+int get_locos(struct trigger_t *trigger, char *loco_file) {
+    FILE *fp;
+    int ret;
+
+    ret = get_ms2_dbsize(trigger);
+    /* TODO */
+    fp = fopen(loco_file, "wb");
+    if (fp == NULL) {
+	fprintf(stderr, "%s: error writing locomotive file [%s]\n", __func__, loco_file);
+	return EXIT_FAILURE;
+    } else {
+	/* print_locos(fp); */
+    }
+
+    return ret;
 }
 
 int gpio_export(int pin) {
@@ -360,6 +414,7 @@ void set_led_pattern(struct trigger_t *trigger, int pattern) {
 }
 
 int get_data(struct trigger_t *trigger, struct can_frame *frame) {
+    FILE *fp;
     uint16_t crc;
 
     if (frame->can_dlc == 6) {
@@ -395,13 +450,71 @@ int get_data(struct trigger_t *trigger, struct can_frame *frame) {
 
 	    strip_ms2_spaces(trigger->data, trigger->length);
 	}
-	printf("Data:\n%s\n", trigger->data);
-	read_loco_data((char *)trigger->data, CONFIG_STRING);
+	if (!trigger->background && trigger->verbose)
+	    printf("Data:\n%s\n", trigger->data);
 
-	print_locos();
-	printf("max locos : %d\n", get_loco_max());
+	switch (trigger->fsm_state) {
+	case FSM_START:
+	    set_led_pattern(trigger, LED_ST_HB_FAST);
+	    trigger->loco_number = get_value((char *)trigger->data, " .wert=");
+	    if (!trigger->background && trigger->verbose)
+		printf("Number of new locos: %d\n", trigger->loco_number);
+	    if (trigger->loco_number) {
+		trigger->fsm_state = FSM_GET_LOCO_NAMES;
+		get_ms2_loco_names(trigger, 0, 1);
+	    }
+	    break;
+	case FSM_GET_LOCO_NAMES:
+	    read_loco_names((char *)trigger->data);
+	    if (trigger->loco_counter + 1 <= trigger->loco_number) {
+		get_ms2_loco_names(trigger, trigger->loco_counter + 1, 2);
+		trigger->loco_counter += 2;
+	    } else {
+		trigger->fsm_state = FSM_GET_LOCOS_BY_NAME;
+		trigger->loco_names = loco_names;
+		if (trigger->loco_names) {
+		    get_ms2_locoinfo(trigger, trigger->loco_names->name);
+		    trigger->loco_names = trigger->loco_names->hh.next;
+		} else {
+		    trigger->fsm_state = FSM_START;
+		}
+		if (!trigger->background && trigger->verbose)
+		    print_loco_names(stdout);
+	    }
+	    break;
+	case FSM_GET_LOCOS_BY_NAME:
+	    read_loco_data((char *)trigger->data, CONFIG_STRING);
+	    if (trigger->loco_names) {
+		if (!trigger->background && trigger->verbose)
+		    printf("delete loco [%s] and read data (again)\n", trigger->loco_names->name);
+		delete_loco_by_name(trigger->loco_names->name);
+		get_ms2_locoinfo(trigger, trigger->loco_names->name);
+		trigger->loco_names = trigger->loco_names->hh.next;
+	    } else {
+		fp = fopen(trigger->loco_file, "wb");
+		if (fp == NULL) {
+		    fprintf(stderr, "%s: error writing loco file [%s]\n", __func__, trigger->loco_file);
+		} else {
+		    if (!trigger->background && trigger->verbose)
+			printf("writing new loco file [%s]\n", trigger->loco_file);
+		    print_locos(fp);
+		}
+		/* start over with a new list */
+		delete_all_loco_names();
+		set_led_pattern(trigger, LED_ST_HB_SLOW);
+		trigger->fsm_state = FSM_START;
+		trigger->loco_counter = 0;
+	    }
+	    break;
+	default:
+	    break;
+	}
 
-	set_led_pattern(trigger, LED_ST_HB_SLOW);
+	/* if (!trigger->background && trigger->verbose) {
+	    print_locos(stdout);
+	    printf("max locos : %d\n", get_loco_max());
+	} */
+
 	free(trigger->data);
     }
     return 0;
@@ -414,7 +527,6 @@ void *LEDMod(void *ptr) {
     struct trigger_t *trigger = (struct trigger_t *)ptr;
     uint32_t *led_pattern_p;
 
-#if 1
     snprintf(path, MAX_SYSFS_LEN, "/sys/class/gpio/gpio%d/value", trigger->led_pin);
     fd = open(path, O_WRONLY);
     if (fd < 0) {
@@ -451,49 +563,62 @@ void *LEDMod(void *ptr) {
 	    usec_sleep(led_pattern_p[i] * 1000);
 	}
     }
-#else
-    while (1) {
-	usec_sleep(led_period);
-	printf("*");
-	usec_sleep(led_period);
-	printf("-");
-    }
-#endif
 }
 
 int main(int argc, char **argv) {
     pthread_t pth;
-    int opt;
+    struct sigaction sigact;
+    sigset_t blockset, emptyset;
+    int opt, nready, interval;
     struct ifreq ifr;
     struct trigger_t trigger_data;
     struct sockaddr_can caddr;
     fd_set readfds, exceptfds;
     struct can_frame frame;
-    uint16_t member;
+    uint16_t uid;
     uint8_t buffer[MAXLEN];
+    struct timespec ts;
 
     memset(&trigger_data, 0, sizeof(trigger_data));
     memset(ifr.ifr_name, 0, sizeof(ifr.ifr_name));
     strcpy(ifr.ifr_name, "can0");
+    do_loop = 1;
+    interval = 0;
 
+    strcpy(loco_dir, "/www/config");
+
+    trigger_data.hash = OUR_HASH;
+    trigger_data.fsm_state = FSM_START;
     trigger_data.led_pin = -1;
     trigger_data.pb_pin = -1;
 
-    trigger_data.interval = DEF_INTERVAL;
+    trigger_data.background = 1;
 
-    while ((opt = getopt(argc, argv, "i:l:p:t:fvh?")) != -1) {
+    while ((opt = getopt(argc, argv, "c:i:l:p:t:kfvh?")) != -1) {
 	switch (opt) {
+	case 'c':
+	    if (strnlen(optarg, MAXLINE) < MAXLINE) {
+		strncpy(loco_dir, optarg, sizeof(loco_dir) - 1);
+	    } else {
+		fprintf(stderr, "config file dir to long\n");
+		exit(EXIT_FAILURE);
+	    }
+	    break;
 	case 'i':
 	    strncpy(ifr.ifr_name, optarg, sizeof(ifr.ifr_name));
 	    break;
 	case 't':
 	    trigger_data.interval = atoi(optarg);
+	    interval = trigger_data.interval;
 	    break;
 	case 'l':
 	    trigger_data.led_pin = atoi(optarg);
 	    break;
 	case 'p':
 	    trigger_data.pb_pin = atoi(optarg);
+	    break;
+	case 'k':
+	    trigger_data.loco_uid = 1;
 	    break;
 	case 'v':
 	    trigger_data.verbose = 1;
@@ -532,6 +657,13 @@ int main(int argc, char **argv) {
 
     trigger_data.caddr = caddr;
 
+    if (trigger_data.background) {
+	if (daemon(0, 0) < 0) {
+	    fprintf(stderr, "Going into background failed: %s\n", strerror(errno));
+	    exit(EXIT_FAILURE);
+	}
+    }
+
     /* Create thread if LED pin defined */
     if ((trigger_data.led_pin) > 0) {
 	trigger_data.led_pattern = LED_ST_HB_SLOW;
@@ -551,20 +683,40 @@ int main(int argc, char **argv) {
 	    printf("created LED thread\n");
     }
 
-    if (trigger_data.background) {
-	pid_t pid;
+    setlogmask(LOG_UPTO(LOG_NOTICE));
+    openlog("clone-ms2-config", LOG_CONS | LOG_NDELAY, LOG_DAEMON);
 
-	/* fork off the parent process */
-	pid = fork();
-	if (pid < 0) {
-	    exit(EXIT_FAILURE);
-	}
-	/* if we got a good PID, then we can exit the parent process. */
-	if (pid > 0) {
-	    if (trigger_data.verbose)
-		printf("Going into background ...\n");
-	    exit(EXIT_SUCCESS);
-	}
+    sigemptyset(&blockset);
+    sigaddset(&sigact.sa_mask, SIGHUP);
+    sigaddset(&sigact.sa_mask, SIGINT);
+    sigaddset(&sigact.sa_mask, SIGTERM);
+    if (sigprocmask(SIG_BLOCK, &blockset, NULL) < 0) {
+	fprint_syslog(stderr, LOG_ERR, "cannot set SIGNAL block mask\n");
+	return (EXIT_FAILURE);
+    }
+
+    sigact.sa_handler = signal_handler;
+    sigact.sa_flags = 0;
+    sigemptyset(&sigact.sa_mask);
+    sigaction(SIGHUP, &sigact, NULL);
+    sigaction(SIGINT, &sigact, NULL);
+    sigaction(SIGTERM, &sigact, NULL);
+    sigemptyset(&emptyset);
+
+    if (asprintf(&trigger_data.loco_file, "%s/%s", loco_dir, "lokomotive.cs2") < 0) {
+        fprintf(stderr, "can't alloc buffer for loco_name: %s\n", strerror(errno));
+        exit(EXIT_FAILURE);
+    }
+
+    read_loco_data(trigger_data.loco_file, CONFIG_FILE);
+    /* print_locos(stdout);
+    printf("max locos : %d\n", get_loco_max()); */
+
+    /* find trigger loco if requested */
+    if (trigger_data.loco_uid) {
+	trigger_data.loco_uid = get_loco_uid(LOCOLIST);
+	if (!trigger_data.background && trigger_data.verbose)
+	    printf("trigger set: Lokliste F0 UID 0x%04x\n", trigger_data.loco_uid);
     }
 
     /* initialize push button */
@@ -577,6 +729,9 @@ int main(int argc, char **argv) {
 	trigger_data.pb_fd = gpio_open(trigger_data.pb_pin);
     }
 
+    ts.tv_sec = 1;
+    ts.tv_nsec = 0;
+
     FD_ZERO(&readfds);
     FD_ZERO(&exceptfds);
     /* delete pending push button event */
@@ -585,15 +740,28 @@ int main(int argc, char **argv) {
 	    fprintf(stderr, "error reading GPIO trigger: %s\n", strerror(errno));
 	lseek(trigger_data.pb_fd, 0, SEEK_SET);
     }
-    /* loop forever TODO: if interval is set */
-    while (1) {
+    while (do_loop) {
 	FD_SET(trigger_data.socket, &readfds);
 	/* extend FD_SET only if push button pin is set */
 	if (trigger_data.pb_pin > 0)
 	    FD_SET(trigger_data.pb_fd, &exceptfds);
-	if (select(MAX(trigger_data.socket, trigger_data.pb_fd) + 1, &readfds, NULL, &exceptfds, NULL) < 0) {
-	    fprintf(stderr, "select error: %s\n", strerror(errno));
-	    exit(EXIT_FAILURE);
+	nready = pselect(MAX(trigger_data.socket, trigger_data.pb_fd) + 1, &readfds, NULL, &exceptfds, &ts, &emptyset);
+	if (nready == 0) {
+	    /* periodic task check */
+	    ts.tv_sec = 1;
+	    ts.tv_nsec = 0;
+	    if (trigger_data.interval) {
+		if (interval-- == 0) {
+		    get_ms2_dbsize(&trigger_data);
+		    interval = trigger_data.interval;
+		}
+	    }
+	    continue;
+	} else if (nready < 0) {
+	    fprintf(stderr, "pselect exception: %s\n", strerror(errno));
+	    syslog(LOG_WARNING, "pselect exception: %s\n", strerror(errno));
+	    /* will be interrupted by do_loop = 0 */
+	    continue;
 	}
 	/* CAN frame event */
 	if (FD_ISSET(trigger_data.socket, &readfds)) {
@@ -605,10 +773,13 @@ int main(int argc, char **argv) {
 		case 0x31:
 		    if (trigger_data.verbose)
 			print_can_frame(F_CAN_FORMAT_STRG, &frame);
-		    memcpy(&member, frame.data, sizeof(member));
-		    member = ntohs(member);
-		    /* look for MS2 */
-		    if ((member & 0xfff0) == 0x4d50)
+		    break;
+		case 0x0C:
+		    uid = be16(&frame.data[2]);
+		    if (trigger_data.verbose)
+			print_can_frame(F_CAN_FORMAT_STRG, &frame);
+		    /* initiate trigger when loco "Lokliste" and F0 pressed */
+		    if ((uid == trigger_data.loco_uid) && (frame.data[4] == 0))
 			get_ms2_dbsize(&trigger_data);
 		    break;
 		case 0x41:
@@ -616,9 +787,12 @@ int main(int argc, char **argv) {
 			print_can_frame(F_CAN_FORMAT_STRG, &frame);
 		    break;
 		case 0x42:
-		    get_data(&trigger_data, &frame);
 		    if (trigger_data.verbose)
 			print_can_frame(F_CAN_FORMAT_STRG, &frame);
+		    /* check if the data belongs to us */
+		    if ((frame.can_id & 0x0000FFFF) != OUR_HASH)
+			break;
+		    get_data(&trigger_data, &frame);
 		    break;
 		default:
 		    if (trigger_data.verbose)
@@ -629,16 +803,7 @@ int main(int argc, char **argv) {
 	}
 	/* push button event */
 	if (FD_ISSET(trigger_data.pb_fd, &exceptfds)) {
-	    set_led_pattern(&trigger_data, LED_ST_HB_FAST);
-
-	    /* wait some time for LED pattern change */
-	    usec_sleep(1000 * 1000);
-	    /* send CAN Member Ping */
-	    frame.can_id = 0x00300300;
-	    frame.can_dlc = 0;
-	    memset(frame.data, 0, 8);
-	    if (send_can_frame(trigger_data.socket, &frame, trigger_data.verbose) < 0)
-		fprintf(stderr, "can't send CAN Member Ping: %s\n", strerror(errno));
+	    get_ms2_dbsize(&trigger_data);
 
 	    lseek(trigger_data.pb_fd, 0, SEEK_SET);
 	    if (read(trigger_data.pb_fd, buffer, sizeof(buffer)) < 0)
@@ -646,15 +811,12 @@ int main(int argc, char **argv) {
 	    printf("push button event\n");
 	}
     }
-
-    /* TODO : wait until copy is done */
-
     if ((trigger_data.pb_pin) > 0)
 	gpio_unexport(trigger_data.pb_pin);
     if ((trigger_data.led_pin) > 0) {
+	/* pthread_join(pth, (void *)&trigger_data);
+	pthread_mutex_unlock(&lock); */
 	gpio_unexport(trigger_data.led_pin);
-	pthread_join(pth, (void *)&trigger_data);
-	pthread_mutex_unlock(&lock);
     }
-    return (EXIT_SUCCESS);
+    return EXIT_SUCCESS;
 }

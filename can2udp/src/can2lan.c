@@ -22,12 +22,16 @@ static char *UDP_UDP_FORMAT_STRG  = "->UDP>UDP     0x%08X   [%d]";
 static char *NET_UDP_FORMAT_STRG  = "      UDP->   0x%08X   [%d]";
 static char *NET_TCP_FORMAT_STRG  = "      TCP->   0x%08X   [%d]";
 
+#define PING_TIME	12
+
 static char *BROADCAST_C0NFIG_UPDATE = "broadcast_update.cs2";
 static char *PIDFILE = "/var/run/can2lan.pid";
 
 static unsigned char M_GLEISBOX_MAGIC_START_SEQUENCE[] = { 0x00, 0x36, 0x03, 0x01, 0x05, 0x00, 0x00, 0x00, 0x00, 0x11, 0x00, 0x00, 0x00 };
 static unsigned char M_GLEISBOX_ALL_PROTO_ENABLE[]     = { 0x00, 0x00, 0x03, 0x01, 0x06, 0x00, 0x00, 0x00, 0x00, 0x08, 0x07, 0x00, 0x00 };
 static unsigned char M_CAN_PING[]                      = { 0x00, 0x30, 0x47, 0x11, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
+static unsigned char M_CAN_PING_CS2_1[]                = { 0x00, 0x31, 0x63, 0x4A, 0x08, 0x00, 0x00, 0x00, 0x00, 0x04, 0x02, 0xFF, 0xF0 };
+static unsigned char M_CAN_PING_CS2_2[]                = { 0x00, 0x31, 0x63, 0x4B, 0x08, 0x00, 0x00, 0x00, 0x00, 0x03, 0x44, 0x00, 0x00 };
 static unsigned char M_CAN_PING_CS2[]                  = { 0x00, 0x30, 0x47, 0x11, 0x08, 0x00, 0x00, 0x00, 0x00, 0x03, 0x08, 0xff, 0xff };
 static unsigned char M_PING_RESPONSE[] = { 0x00, 0x30, 0x00, 0x00, 0x00 };
 
@@ -72,7 +76,7 @@ void signal_handler(int sig) {
 
 void print_usage(char *prg) {
     fprintf(stderr, "\nUsage: %s -c <config_dir> -u <udp_port> -t <tcp_port> -d <udp_dest_port> -i <can interface>\n", prg);
-    fprintf(stderr, "   Version 1.23\n\n");
+    fprintf(stderr, "   Version 1.26\n\n");
     fprintf(stderr, "         -c <config_dir>     set the config directory\n");
     fprintf(stderr, "         -u <port>           listening UDP port for the server - default 15731\n");
     fprintf(stderr, "         -t <port>           listening TCP port for the server - default 15731\n");
@@ -178,7 +182,7 @@ int check_data_udp(int udp_socket, struct sockaddr *baddr, struct cs2_config_dat
 	    } else {
 		print_can_frame(NET_UDP_FORMAT_STRG, netframe, cs2_config_data->verbose);
 		if (cs2_config_data->verbose)
-		    printf("                replied CAN ping (fake CS2)\n");
+		    printf("                replied CAN ping (fake GFP)\n");
 	    }
 	}
 	break;
@@ -196,6 +200,26 @@ int check_data_udp(int udp_socket, struct sockaddr *baddr, struct cs2_config_dat
 	    }
 	    if (cs2_config_data->cs2_config_copy)
 		copy_cs2_config(cs2_config_data);
+	}
+	if (cs2fake_ping) {
+	    if (cs2_config_data->verbose)
+		printf("                received CAN ping\n");
+	    memcpy(netframe, M_CAN_PING_CS2_1, 13);
+	    if (net_to_net(udp_socket, baddr, netframe, CAN_ENCAP_SIZE)) {
+		fprint_syslog_wc(stderr, LOG_ERR, "sending UDP data (CAN Ping fake CS2) error:", strerror(errno));
+	    } else {
+		print_can_frame(NET_UDP_FORMAT_STRG, netframe, cs2_config_data->verbose);
+		if (cs2_config_data->verbose)
+		    printf("                replied CAN ping (fake CS2)\n");
+	    }
+	    memcpy(netframe, M_CAN_PING_CS2_2, 13);
+	    if (net_to_net(udp_socket, baddr, netframe, CAN_ENCAP_SIZE)) {
+		fprint_syslog_wc(stderr, LOG_ERR, "sending UDP data (CAN Ping fake CS2) error:", strerror(errno));
+	    } else {
+		print_can_frame(NET_UDP_FORMAT_STRG, netframe, cs2_config_data->verbose);
+		if (cs2_config_data->verbose)
+		    printf("                replied CAN ping (fake GFP)\n");
+	    }
 	}
 	break;
     case (0x00400000UL):
@@ -269,7 +293,7 @@ int check_data(int tcp_socket, struct cs2_config_data_t *cs2_config_data, unsign
 	    netframe[1] |= 1;
 	    net_to_net(tcp_socket, NULL, netframe, CAN_ENCAP_SIZE);
 	    if (strcmp("loks", config_name) == 0) {
-		ret = 0;
+		ret = 1;
 		syslog(LOG_NOTICE, "%s: sending lokomotive.cs2\n", __func__);
 		send_tcp_config_data("lokomotive.cs2", config_dir, canid, tcp_socket, CRC | COMPRESSED);
 		break;
@@ -391,6 +415,7 @@ int main(int argc, char **argv) {
     int local2_tcp_port = 15732;
     int destination_port = 15730;
     int background = 1;
+    int cs2ping_timer = 0;
     /* const int off = 0; */
     const int on = 1;
     uint32_t canid;
@@ -719,9 +744,25 @@ int main(int argc, char **argv) {
 	read_fds = all_fds;
 	nready = pselect(max_fds + 1, &read_fds, NULL, NULL, &ts, &emptyset);
 	if (nready == 0) {
-	    /*    send_can_ping(sc); */
+	    /* send periodic ping */
 	    ts.tv_sec = 1;
 	    ts.tv_nsec = 0;
+	    if (cs2fake_ping)
+		cs2ping_timer++;
+	    if (cs2ping_timer >= PING_TIME) {
+		cs2ping_timer = 0;
+		print_can_frame(UDP_FORMAT_STRG, netframe, cs2_config_data.verbose && !background);
+		if (frame_to_can(sc, M_CAN_PING) < 0) {
+		    fprint_syslog(stderr, LOG_ERR, "can't send CAN ping");
+		}
+		for (i = 0; i <= max_tcp_i; i++) {	/* check all clients for data */
+		    tcp_socket = tcp_client[i];
+		    if (tcp_socket <= 0)
+			continue;
+		    net_to_net(tcp_socket, NULL, M_CAN_PING, CAN_ENCAP_SIZE);
+		    print_can_frame(CAN_TCP_FORMAT_STRG, M_CAN_PING, cs2_config_data.verbose && !background);
+		}
+	    }
 	    continue;
 	} else if (nready < 0) {
 	    if (!background)
@@ -729,9 +770,6 @@ int main(int argc, char **argv) {
 	    syslog(LOG_WARNING, "select exception: [%d] %s\n", nready, strerror(errno));
 	    continue;
 	}
-
-	ts.tv_sec = 1;
-	ts.tv_nsec = 0;
 
 	/* received a CAN frame */
 	if (FD_ISSET(sc, &read_fds)) {
@@ -869,7 +907,7 @@ int main(int argc, char **argv) {
 				    else
 					print_can_frame(TCP_FORMAT_STRG, &netframe[i], cs2_config_data.verbose && !background);
 				}
-				net_to_net(sb, (struct sockaddr *)&baddr, netframe, CAN_ENCAP_SIZE);
+				net_to_net(sb, (struct sockaddr *)&baddr, &netframe[i], CAN_ENCAP_SIZE);
 				print_can_frame(UDP_FORMAT_STRG, netframe, cs2_config_data.verbose && !background);
 			    }
 			}
